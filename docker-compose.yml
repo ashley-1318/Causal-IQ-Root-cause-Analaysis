@@ -1,0 +1,437 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CausalIQ – Autonomous RCA Engine
+# Full production docker-compose.yml
+# Run with: docker-compose up --build
+# ──────────────────────────────────────────────────────────────────────────────
+
+x-common-env: &common-env
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+  NEO4J_URI:   bolt://neo4j:7687
+  NEO4J_USER:  neo4j
+  NEO4J_PASS:  causaliq123
+  CLICKHOUSE_HOST:     clickhouse
+  CLICKHOUSE_PORT:     "8123"
+  CLICKHOUSE_USER:     default
+  CLICKHOUSE_PASSWORD: causaliq123
+  CLICKHOUSE_DB:       causaliq
+  REDIS_URL:           redis://redis:6379
+  QDRANT_URL:          http://qdrant:6333
+  OLLAMA_URL:          http://ollama:11434
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  AUTH_SERVICE_URL:    http://auth-service:8000
+  ORDER_SERVICE_URL:   http://order-service:8001
+  PAYMENT_SERVICE_URL: http://payment-service:8002
+
+networks:
+  causaliq-net:
+    driver: bridge
+
+volumes:
+  redpanda_data:
+  neo4j_data:
+  clickhouse_data:
+  qdrant_data:
+  ollama_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  redpanda:
+    image: redpandadata/redpanda:v23.3.11
+    container_name: causaliq-redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
+      - --advertise-kafka-addr PLAINTEXT://redpanda:9092,OUTSIDE://localhost:19092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr localhost:8082
+    ports:
+      - "19092:19092"
+      - "8082:8082"
+      - "9644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep 'Healthy:.*true'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  redpanda-console:
+    image: redpandadata/console:v2.5.2
+    container_name: causaliq-redpanda-console
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+
+  kafka-setup:
+    build:
+      context: ./streaming
+      dockerfile: Dockerfile.setup
+    container_name: causaliq-kafka-setup
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+    restart: "no"
+
+  neo4j:
+    image: neo4j:5.18-community
+    container_name: causaliq-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/causaliq123
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_pagecache_size: 512M
+      NEO4J_dbms_memory_heap_max__size: 512M
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: causaliq-clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: causaliq123
+      CLICKHOUSE_DB: causaliq
+    ports:
+      - "8123:8123"
+      - "9002:9000"   # 9000 is used by the backend host port; mapped to 9002 on host
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    container_name: causaliq-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - causaliq-net
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: causaliq-redis
+    command: redis-server --save "" --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: causaliq-prometheus
+    volumes:
+      - ./otel/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-remote-write-receiver
+    ports:
+      - "9090:9090"
+    networks:
+      - causaliq-net
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: causaliq-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: causaliq123
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./otel/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - causaliq-net
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: causaliq-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: "10000"
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+      - "14268:14268"
+    networks:
+      - causaliq-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.100.0
+    container_name: causaliq-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel/config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "8889:8889"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+
+  ollama:
+    image: ollama/ollama:0.1.44
+    container_name: causaliq-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - causaliq-net
+    # GPU support is optional — remove the 'deploy' block if no NVIDIA GPU is present.
+    # To enable GPU: uncomment the block below and ensure nvidia-container-toolkit is installed.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    # Pulls llama3 on first start (requires internet, ~5-8 GB)
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 15 && ollama pull llama3 && ollama pull nomic-embed-text && wait"]
+    restart: unless-stopped
+
+  # ── Microservices ───────────────────────────────────────────────────────────
+
+  auth-service:
+    build: ./services/auth-service
+    container_name: causaliq-auth
+    environment:
+      <<: *common-env
+      JWT_SECRET: causaliq-super-secret-2024
+    ports:
+      - "8000:8000"
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  order-service:
+    build: ./services/order-service
+    container_name: causaliq-order
+    environment:
+      <<: *common-env
+    ports:
+      - "8001:8001"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  payment-service:
+    build: ./services/payment-service
+    container_name: causaliq-payment
+    environment:
+      <<: *common-env
+    ports:
+      - "8002:8002"
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - causaliq-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── AI Pipeline ─────────────────────────────────────────────────────────────
+
+  stream-processor:
+    build: ./processing
+    container_name: causaliq-stream-processor
+    environment:
+      <<: *common-env
+      WINDOW_SECONDS: "30"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+
+  anomaly-detector:
+    build:
+      context: ./ai_engine
+      dockerfile: Dockerfile
+    container_name: causaliq-anomaly-detector
+    command: python anomaly/detector.py
+    environment:
+      <<: *common-env
+      ANOMALY_SCORE_THRESHOLD: "-0.1"
+      MIN_TRAINING_SAMPLES: "50"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+
+  rca-engine:
+    build:
+      context: ./ai_engine
+      dockerfile: Dockerfile
+    container_name: causaliq-rca-engine
+    command: python orchestrator.py
+    environment:
+      <<: *common-env
+      LLM_MODEL: llama3
+      EMBED_MODEL: nomic-embed-text
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      kafka-setup:
+        condition: service_completed_successfully
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+
+  # ── Backend ─────────────────────────────────────────────────────────────────
+
+  backend:
+    build: ./backend
+    container_name: causaliq-backend
+    environment:
+      <<: *common-env
+      PROMETHEUS_URL: http://prometheus:9090
+    ports:
+      - "9001:9000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9000/health').read()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+
+  frontend:
+    build: ./frontend
+    container_name: causaliq-frontend
+    environment:
+      REACT_APP_API_URL: http://localhost:9001
+      REACT_APP_WS_URL: ws://localhost:9001/ws/live
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+
+  # ── Load Generator (runs once, can be re-triggered) ─────────────────────────
+
+  load-generator:
+    build: ./load_generator
+    container_name: causaliq-load-generator
+    environment:
+      <<: *common-env
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    networks:
+      - causaliq-net
+    profiles:
+      - simulation   # docker-compose --profile simulation up

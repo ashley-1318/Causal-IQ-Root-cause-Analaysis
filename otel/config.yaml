@@ -1,0 +1,98 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  memory_limiter:
+    limit_mib: 512
+    spike_limit_mib: 128
+    check_interval: 5s
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: insert
+
+exporters:
+  # Traces → Jaeger OTLP receiver
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus (pull)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: causaliq
+    send_timestamps: true
+    metric_expiration: 180m
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Logs → Kafka
+  kafka:
+    brokers:
+      - redpanda:9092
+    topic: otel-logs
+    encoding: otlp_json
+    timeout: 10s
+    producer:
+      max_message_bytes: 10000000
+      required_acks: 1
+      compression: snappy
+
+  # Traces → Kafka (for stream processing)
+  kafka/traces:
+    brokers:
+      - redpanda:9092
+    topic: otel-traces
+    encoding: otlp_json
+    timeout: 10s
+    producer:
+      max_message_bytes: 10000000
+      required_acks: 1
+
+  # Metrics → Kafka (for ML pipeline)
+  kafka/metrics:
+    brokers:
+      - redpanda:9092
+    topic: otel-metrics
+    encoding: otlp_json
+    timeout: 10s
+    producer:
+      max_message_bytes: 10000000
+      required_acks: 1
+
+  # Debug exporter (console)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger, kafka/traces]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus, kafka/metrics]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [kafka]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

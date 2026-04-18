@@ -1,0 +1,29 @@
+{
+  "name": "causaliq-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
+    "cytoscape": "^3.29.2",
+    "react-cytoscapejs": "^2.0.0",
+    "recharts": "^2.12.7",
+    "zustand": "^4.5.2",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.378.0",
+    "ajv": "^8.17.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "devDependencies": {
+    "react-scripts": "5.0.1"
+  },
+  "proxy": "http://backend:9000",
+  "browserslist": {
+    "production": [">0.2%", "not dead"],
+    "development": ["last 1 chrome version"]
+  }
+}

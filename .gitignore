@@ -1,0 +1,54 @@
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Project-specific AI artifacts
+isolation_forest.pkl
+scaler.pkl
+/ai_engine/model_store/*
+
+# Node / Frontend
+node_modules/
+build/
+.pnp
+.pnp.js
+
+# Testing
+.tox/
+.nox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.pyo
+.pytest_cache/
+
+# Databases / Data Volumes
+ch_data/
+neo4j_data/
+qdrant_data/
+redpanda_data/
+prometheus_data/
+grafana_data/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
