@@ -36,6 +36,8 @@ AUTH_URL        = os.getenv("AUTH_SERVICE_URL",    "http://auth-service:8000")
 ORDER_URL       = os.getenv("ORDER_SERVICE_URL",   "http://order-service:8001")
 PROMETHEUS_URL  = os.getenv("PROMETHEUS_URL",  "http://prometheus:9090")
 
+from .webhooks import router as webhook_router
+
 app = FastAPI(title="CausalIQ Backend", version="2.0.0", docs_url="/api/docs")
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +45,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(webhook_router)
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 _ch_client = None
@@ -150,16 +153,12 @@ class LoadTrigger(BaseModel):
 async def health():
     return {"status": "ok", "service": "causaliq-backend", "ts": datetime.utcnow().isoformat()}
 
-# ── Incidents ─────────────────────────────────────────────────────────────────
+from .remediation.queue import PendingRemediationQueue
+pending_queue = PendingRemediationQueue(REDIS_URL + "/1")
+
 @app.get("/incidents")
 async def list_incidents(limit: int = 50, offset: int = 0):
-    """Return recent incidents from ClickHouse."""
-    redis = await get_redis()
-    cache_key = f"incidents:{limit}:{offset}"
-    cached = await redis.get(cache_key)
-    if cached:
-        return json.loads(cached)
-
+    """Return recent incidents with real-time approval status."""
     ch = get_ch()
     rows = ch.query(
         f"""
@@ -172,17 +171,22 @@ async def list_incidents(limit: int = 50, offset: int = 0):
     )
     result = []
     for row in rows.result_rows:
+        inc_id = row[0]
+        # Check if this incident is currently pending approval
+        pending = await pending_queue.get_action(inc_id)
+        status = pending.get("status", "RESOLVED") if pending else "DONE"
+        
         result.append({
-            "incident_id": row[0],
+            "incident_id": inc_id,
             "root_cause": row[1],
             "confidence": row[2],
             "impact_chain": json.loads(row[3]) if row[3] else [],
             "anomaly_count": row[4],
             "explanation": row[5][:500] if row[5] else "",
             "created_at": row[6].isoformat() if hasattr(row[6], "isoformat") else str(row[6]),
+            "status": status,
+            "remediation": pending.get("action", None) if pending else None
         })
-
-    await redis.setex(cache_key, 10, json.dumps(result))
     return result
 
 
@@ -257,7 +261,7 @@ async def get_metrics():
                avg(throughput_rps) AS throughput,
                max(ts) AS last_ts
         FROM {CH_DB}.service_metrics
-        WHERE ts > now() - INTERVAL 5 MINUTE
+        WHERE ts > now() - INTERVAL 1 HOUR
         GROUP BY service
         ORDER BY service
         """

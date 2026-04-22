@@ -20,50 +20,10 @@ OLLAMA_URL  = os.getenv("OLLAMA_URL",  "http://ollama:11434")
 QDRANT_URL  = os.getenv("QDRANT_URL",  "http://qdrant:6333")
 LLM_MODEL   = os.getenv("LLM_MODEL",  "llama3")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
-COLLECTION  = "causaliq-incidents"
+from .incident_store import QdrantIncidentStore
+from .schemas import IncidentEmbeddingSchema, RootCauseType, CausalEdge
 
-
-# ── Qdrant client (minimal, using REST) ───────────────────────────────────────
-class QdrantClient:
-    def __init__(self, url: str):
-        self.url = url.rstrip("/")
-        self._ensure_collection()
-
-    def _ensure_collection(self):
-        try:
-            r = httpx.get(f"{self.url}/collections/{COLLECTION}", timeout=5)
-            if r.status_code == 404:
-                httpx.put(
-                    f"{self.url}/collections/{COLLECTION}",
-                    json={"vectors": {"size": 768, "distance": "Cosine"}},
-                    timeout=10,
-                )
-                logger.info("Qdrant collection '%s' created", COLLECTION)
-        except Exception as exc:
-            logger.warning("Qdrant init warning: %s", exc)
-
-    def upsert(self, point_id: str, vector: list[float], payload: dict):
-        try:
-            httpx.put(
-                f"{self.url}/collections/{COLLECTION}/points",
-                json={"points": [{"id": point_id, "vector": vector, "payload": payload}]},
-                timeout=10,
-            )
-        except Exception as exc:
-            logger.warning("Qdrant upsert error: %s", exc)
-
-    def search(self, vector: list[float], limit: int = 3) -> list[dict]:
-        try:
-            r = httpx.post(
-                f"{self.url}/collections/{COLLECTION}/points/search",
-                json={"vector": vector, "limit": limit, "with_payload": True},
-                timeout=10,
-            )
-            if r.status_code == 200:
-                return [hit["payload"] for hit in r.json().get("result", [])]
-        except Exception as exc:
-            logger.warning("Qdrant search error: %s", exc)
-        return []
+# We keep the Ollama helpers for general text generation
 
 
 # ── Ollama helpers ─────────────────────────────────────────────────────────────
@@ -106,28 +66,27 @@ def generate_llm(prompt: str, system: str = "") -> str:
 # ── Main RCA Explainer ─────────────────────────────────────────────────────────
 class RCAExplainer:
     def __init__(self):
-        self.qdrant = QdrantClient(QDRANT_URL)
+        self.store = QdrantIncidentStore()
 
-    def _build_rag_context(self, query: str) -> str:
-        """Retrieve similar past incidents from Qdrant."""
-        vec = embed_text(query)
-        if not vec:
-            return ""
-        past = self.qdrant.search(vec, limit=3)
+    async def _build_rag_context(self, rca_data: dict) -> str:
+        """Retrieve similar past incidents using Hybrid Search."""
+        # Formulate query from RCA metadata
+        query = f"Incident impacting {rca_data.get('root_cause_service')}."
+        past = await self.store.hybrid_search(query, top_k=3)
+        
         if not past:
-            return ""
+            return "No similar past incidents found in knowledge base."
+            
         context_parts = []
         for p in past:
             context_parts.append(
-                f"Past Incident [{p.get('incident_id', '?')}]:\n"
-                f"  Root Cause: {p.get('root_cause', '?')}\n"
-                f"  Impact Chain: {' → '.join(p.get('impact_chain', []))}\n"
-                f"  Resolution: {p.get('resolution', 'N/A')}\n"
-                f"  Confidence: {p.get('confidence', '?')}"
+                f"Reference Incident [{p.get('incident_id')}]:\n"
+                f"  Cause: {p.get('root_cause_service')} ({p.get('cause_type')})\n"
+                f"  Resolution: {p.get('resolution_action', 'Applied standard restart')}"
             )
         return "\n\n".join(context_parts)
 
-    def generate_rca(self, rca_data: dict) -> dict:
+    async def generate_rca(self, rca_data: dict) -> dict:
         """
         Generate a full RCA explanation using LLM + RAG.
         rca_data: output from the causal engine
@@ -139,7 +98,7 @@ class RCAExplainer:
 
         # RAG: retrieve similar past incidents
         query = f"root cause {root} latency error cascade {' '.join(chain)}"
-        rag_context = self._build_rag_context(query)
+        rag_context = await self._build_rag_context(query)
 
         # Build LLM prompt
         system_prompt = (

@@ -1,0 +1,28 @@
+version: "3.8"
+
+# CausalIQ Demo Optimization Layer
+# Overrides production settings to make the system highly responsive for short live demos.
+
+services:
+  anomaly-detector:
+    environment:
+      # -0.35 is the 'perfect' demo threshold: 
+      # sensitive enough to show the 'pulse' but tough enough to hide noise.
+      ANOMALY_SCORE_THRESHOLD: -0.35 
+      MIN_TRAINING_SAMPLES: 30       # Train @ T+90s instead of T+5m
+      DEMO_MODE: "true"
+
+  rca-engine:
+    environment:
+      # Only show high-quality candidates to avoid confusing the audience
+      BAYESIAN_MIN_CONFIDENCE: 0.70 
+      # Auto-triggers a sample incident 45 seconds after the first model train
+      AUTO_TRIGGER_SAMPLE: "true"
+
+  backend:
+    environment:
+      DEMO_VISUALS: "true" # Frontend can use this to show 'Simulation Active' banners
+      
+  frontend:
+    environment:
+      REACT_APP_IS_DEMO: "true"

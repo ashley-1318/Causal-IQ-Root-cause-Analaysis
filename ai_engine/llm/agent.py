@@ -13,7 +13,8 @@ class RCAAgent:
     RCA hypotheses in real-time.
     """
     def __init__(self, ch_client, neo4j_engine):
-        self.llm = Ollama(model="llama3.1", base_url=os.getenv("OLLAMA_URL", "http://ollama:11434"))
+        model_name = os.getenv("LLM_MODEL", "llama3")
+        self.llm = Ollama(model=model_name, base_url=os.getenv("OLLAMA_URL", "http://ollama:11434"))
         self.ch = ch_client
         self.graph = neo4j_engine
         
@@ -36,7 +37,9 @@ class RCAAgent:
             self.llm, 
             agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
             verbose=True,
-            handle_parsing_errors=True
+            handle_parsing_errors=True,
+            max_iterations=3,
+            early_stopping_method="generate"
         )
 
     def _get_metrics(self, service_name: str):
@@ -61,8 +64,10 @@ class RCAAgent:
             f"SYSTEM: You are the CausalIQ Senior RCA Agent.\n"
             f"INCIDENT: Multiple anomalies detected. Top candidate for root cause is '{root_candidate}'.\n"
             f"ANOMALIES OBSERVED: {active_anomalies}\n\n"
-            f"TASK: Use your tools to verify if '{root_candidate}' is truly the root cause or just another symptom. "
-            f"Check the metrics of '{root_candidate}' and see if its downstream services are also failing. "
+            f"TASK: Use the information provided to explain why '{root_candidate}' is the root cause. "
             f"Provide a definitive markdown report."
         )
-        return self.agent.run(prompt)
+        try:
+            return self.llm.invoke(prompt)
+        except Exception as e:
+            return f"Agent Generation Error: {str(e)}"

@@ -20,6 +20,11 @@ x-common-env: &common-env
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
   AUTH_SERVICE_URL:    http://auth-service:8000
   ORDER_SERVICE_URL:   http://order-service:8001
+  SLACK_BOT_TOKEN:        "${SLACK_BOT_TOKEN:-xoxb-your-token-here}"
+  SLACK_SIGNING_SECRET:   "da319677eacacd551bd2282a8c95f4f0"
+  SLACK_CHANNEL_ID:       "C0AUBJ38VLL"
+  APPROVAL_TIMEOUT_SECONDS: "300"
+  ANOMALY_SCORE_THRESHOLD: "-0.30"
   PAYMENT_SERVICE_URL: http://payment-service:8002
 
 networks:

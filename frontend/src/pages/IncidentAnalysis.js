@@ -267,9 +267,20 @@ export default function IncidentAnalysis() {
                         {inc.created_at ? formatDistanceToNow(new Date(inc.created_at), { addSuffix: true }) : '—'}
                       </td>
                       <td>
-                        <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => handleView(inc)}>
-                          View RCA →
-                        </button>
+                        {inc.status === 'PENDING' ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span className="badge badge-yellow" style={{ fontSize: '9px', padding: '2px 6px' }}>PENDING APPROVAL</span>
+                            <button className="btn btn-primary" style={{ padding: '2px 8px', fontSize: '10px' }} onClick={() => handleView(inc)}>
+                              Approve?
+                            </button>
+                          </div>
+                        ) : inc.status === 'APPROVED' ? (
+                          <span className="badge badge-green" style={{ fontSize: '10px' }}>APPROVED ✅</span>
+                        ) : (
+                          <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => handleView(inc)}>
+                            View RCA →
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
