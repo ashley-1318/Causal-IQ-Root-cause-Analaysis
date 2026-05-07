@@ -80,6 +80,12 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int = 3600
 
+
+class FaultConfig(BaseModel):
+    active: bool
+    db_latency_ms: int = 50
+    error_rate: float = 0.20
+
 # Fake user store (statically defined — not mock data, this is the service's own user table)
 USERS = {
     "alice": {"password": "pass123", "role": "admin"},
@@ -87,10 +93,27 @@ USERS = {
     "carol": {"password": "pass789", "role": "user"},
 }
 
+# Optional runtime fault mode for testing resilience under auth degradation.
+FAULT_MODE = {"active": False, "db_latency_ms": 50, "error_rate": 0.20}
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "auth-service", "ts": datetime.utcnow().isoformat()}
+    return {"status": "ok", "service": "auth-service", "ts": datetime.utcnow().isoformat(), "fault_mode": FAULT_MODE}
+
+
+@app.post("/admin/fault")
+async def set_fault_mode(cfg: FaultConfig):
+    FAULT_MODE["active"] = cfg.active
+    FAULT_MODE["db_latency_ms"] = cfg.db_latency_ms
+    FAULT_MODE["error_rate"] = max(0.0, min(1.0, cfg.error_rate))
+    logger.warning(
+        "Auth fault mode changed: active=%s latency_ms=%d error_rate=%.2f",
+        cfg.active,
+        cfg.db_latency_ms,
+        FAULT_MODE["error_rate"],
+    )
+    return FAULT_MODE
 
 
 @app.post("/auth/login", response_model=TokenResponse)
@@ -102,9 +125,16 @@ async def login(req: LoginRequest):
 
         # Simulate variable latency (real behaviour, not mock)
         jitter = random.gauss(50, 20)   # ~50 ms mean
+        if FAULT_MODE["active"]:
+            jitter += FAULT_MODE["db_latency_ms"]
         await asyncio.sleep(max(jitter, 5) / 1000)
 
         span.set_attribute("auth.latency_ms", jitter)
+
+        if FAULT_MODE["active"] and random.random() < FAULT_MODE["error_rate"]:
+            error_counter.add(1, {"reason": "fault_injected_auth"})
+            span.set_attribute("auth.error", "fault_injected_auth")
+            raise HTTPException(status_code=503, detail="Auth service degraded")
 
         user = USERS.get(req.username)
         if not user or user["password"] != req.password:
@@ -147,6 +177,11 @@ async def logout(authorization: str = Header(default="")):
 async def validate_token(authorization: str = Header(default="")):
     with tracer.start_as_current_span("auth.validate") as span:
         try:
+            if FAULT_MODE["active"]:
+                await asyncio.sleep(max(FAULT_MODE["db_latency_ms"], 5) / 1000)
+                if random.random() < FAULT_MODE["error_rate"]:
+                    error_counter.add(1, {"reason": "fault_injected_validate"})
+                    raise HTTPException(status_code=503, detail="Auth validation degraded")
             token = authorization.replace("Bearer ", "")
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGO])
             span.set_attribute("user.name", payload.get("sub", ""))

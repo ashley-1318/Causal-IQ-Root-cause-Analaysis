@@ -12,3 +12,4 @@ langchain-community==0.2.1
 qdrant-client==1.9.1
 redis==5.0.4
 faust-streaming==0.10.15
+langchain-groq

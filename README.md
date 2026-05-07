@@ -1,12 +1,13 @@
 # ⚡ CausalIQ — Autonomous AI Agentic RCA Engine
 
-> **The first "Self-Healing" observability platform that doesn't just show you what's broken — it reasons *why*, verifies *how*, and fixes *it*.**
+> **The first "Self-Healing" observability platform that doesn't just show you what's broken — it reasons _why_, verifies _how_, and fixes _it_.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](docker-compose.yml)
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-teal.svg)](https://fastapi.tiangolo.com)
-[![LLM](https://img.shields.io/badge/LLM-Llama3.1%20%7C%20Mistral-purple.svg)](https://ollama.com)
+[![LLM](https://img.shields.io/badge/LLM-Llama3%20(Local)-purple.svg)](https://ollama.com)
+[![Remediation](https://img.shields.io/badge/Action-Closed--Loop-red.svg)](ai_engine/remediation)
 
 ---
 
@@ -16,6 +17,8 @@
 - [Solution Overview](#-solution-overview)
 - [Architecture](#-architecture)
 - [Intelligence Engine](#-intelligence-engine-the-three-pillars)
+- [Autonomous Remediation](#-closed-loop-autonomous-remediation)
+- [Performance Optimization](#-intelligent-throttling--caching)
 - [Technology Stack](#-technology-stack)
 - [Services](#-services)
 - [Prerequisites](#-prerequisites)
@@ -23,6 +26,7 @@
 - [Demo — Full Incident Simulation](#-demo--full-incident-simulation)
 - [API Reference](#-api-reference)
 - [Configuration](#-configuration)
+- [Operational Docs](#-operational-docs)
 - [Project Structure](#-project-structure)
 - [Troubleshooting](#-troubleshooting)
 - [Teardown](#-teardown)
@@ -33,14 +37,14 @@
 
 In modern microservice environments, a single database glitch can trigger hundreds of downstream alerts. SRE teams suffer from **Alert Fatigue** — spending hours manually tracing dependencies to find "Patient Zero."
 
-| Pain Point | Impact |
-|---|---|
-| **Downtime Cost** | $5,600 per minute on average (Gartner) |
-| **Manual Triage** | 60–90 minutes per major incident |
-| **Alert Noise** | Thousands of symptomatic alerts masking 1 root cause |
-| **Tribal Knowledge** | Diagnosis depends on a few experienced engineers |
+| Pain Point           | Impact                                               |
+| -------------------- | ---------------------------------------------------- |
+| **Downtime Cost**    | $5,600 per minute on average (Gartner)               |
+| **Manual Triage**    | 60–90 minutes per major incident                     |
+| **Alert Noise**      | Thousands of symptomatic alerts masking 1 root cause |
+| **Tribal Knowledge** | Diagnosis depends on a few experienced engineers     |
 
-Traditional dashboards show *something* is wrong — but not *why* it's wrong or *how* to fix it.
+Traditional dashboards show _something_ is wrong — but not _why_ it's wrong or _how_ to fix it.
 
 ---
 
@@ -99,16 +103,42 @@ The SRE opens the CausalIQ Dashboard. ClickHouse ingests metrics continuously. T
 A service experiences a latency spike. The Ensemble Detector (Isolation Forest + Sliding Window Correlation) identifies this as an anomaly — ignoring natural busy-hour traffic patterns through online retraining.
 
 **Phase 3 — Bayesian Assessment**
-The Bayesian Engine queries the Neo4j service topology graph and computes conditional probabilities across all anomalous services. It calculates: *P(payment-service = Root Cause | order-service shows anomaly) = 94%.*
+The Bayesian Engine calculates conditional probabilities using learned history. It asks: *"Given that Service A is failing, what is the probability that Service B is the root cause?"* It identifies the true origin of failure with mathematical precision.
+
+#### 1. 🧠 Bayesian Causal Learning
+Unlike simple rule-based tools, CausalIQ uses **Bayesian Conditional Probability Tables (CPTs)** to calculate root-cause probabilities. It learns from every historical incident in ClickHouse, mathematically identifying which services are the true origin of failure versus mere symptoms.
+
+#### 2. 🕸️ Graph-Based Topology
+The system maps your infrastructure into a **Neo4j Directed Acyclic Graph (DAG)**. When an anomaly occurs, the AI performs "Graph Traversal" to trace the path of destruction across upstream and downstream services.
+
+#### 3. 🤖 Local Agentic AI (Ollama)
+CausalIQ leverages **local LLMs (Llama 3 via Ollama)** to act as a "Senior SRE." The agent uses specialized tools to query metrics and logs, then synthesizes a human-readable explanation of the incident without any data ever leaving your network.
+
+---
+
+### 🚀 Closed-Loop Autonomous Remediation
+
+CausalIQ doesn't just stop at detection. It features a fully autonomous "Remediation Executor":
+
+- **High Confidence Mode (>95%):** The AI automatically executes the corrective action (e.g., scaling pods, restarting services) and notifies Slack/Jira.
+- **Human-in-the-Loop Mode (<95%):** The AI presents a "Proposed Action" to the SRE in Slack with "Approve" and "Reject" buttons.
+- **Fail-Safe Mechanism:** If an autonomous action fails to restore health, the system immediately escalates to a human operator.
+
+### ⚡ Intelligent Throttling & Caching
+
+To prevent "Alert Fatigue" and reduce operational costs:
+- **MD5 Result Caching:** Identical failure patterns are cached in-memory. Repeat incidents receive instant diagnosis without re-running heavy AI cycles.
+- **Service Cooldowns:** A 120-second cooldown window per service prevents alert storms during cascading failures.
 
 **Phase 4 — Agentic Verification**
 The Llama3.1 Agent wakes up and acts like an autonomous investigator:
+
 1. **Tool Call →** Queries ClickHouse for `payment-service` DB connection logs
 2. **Finding →** Discovers "Connection Pool Exhausted" error at timestamp
-3. **Memory Check →** Queries Qdrant: *"Similar issue in Feb — resolved by increasing max_connections"*
+3. **Memory Check →** Queries Qdrant: _"Similar issue in Feb — resolved by increasing max_connections"_
 
 **Phase 5 — Verified Resolution**
-The Agent writes a verified report: *"Root Cause: Payment DB Pool Exhaustion at 14:23:01. Confidence: 94%. Recommendation: Scale DB connections to 300."* Dashboard updates in real time.
+The Agent writes a verified report: _"Root Cause: Payment DB Pool Exhaustion at 14:23:01. Confidence: 94%. Recommendation: Scale DB connections to 300."_ Dashboard updates in real time.
 
 **Result:** MTTR reduced from **60 minutes → 45 seconds**. Incident logged for future learning.
 
@@ -118,95 +148,105 @@ The Agent writes a verified report: *"Root Cause: Payment DB Pool Exhaustion at 
 
 ### Pillar 1: Ensemble Anomaly Detection
 
-| Property | Detail |
-|---|---|
-| **Algorithm** | Isolation Forest (scikit-learn) + Sliding Window Correlation |
-| **Features** | `avg_latency`, `p99_latency`, `error_rate`, `throughput` per service |
+| Property       | Detail                                                               |
+| -------------- | -------------------------------------------------------------------- |
+| **Algorithm**  | Isolation Forest (scikit-learn) + Sliding Window Correlation         |
+| **Features**   | `avg_latency`, `p99_latency`, `error_rate`, `throughput` per service |
 | **Retraining** | Online retraining every 5 minutes — adapts to natural traffic shifts |
-| **Goal** | Rapid, seasonality-aware detection with minimal false positives |
+| **Goal**       | Rapid, seasonality-aware detection with minimal false positives      |
 
 ### Pillar 2: Bayesian Causal Inference
 
-| Property | Detail |
-|---|---|
-| **Library** | `pgmpy` — Probabilistic Graphical Models |
-| **Model** | Structural Causal Model built from live Neo4j service topology |
-| **Logic** | Computes *P(Service A = Root Cause \| Services B, C show anomalies)* |
-| **Priors** | Uniform on fresh install → updated from resolved incident history |
-| **Goal** | Eliminate false positives from downstream symptoms |
+| Property    | Detail                                                               |
+| ----------- | -------------------------------------------------------------------- |
+| **Library** | `pgmpy` — Probabilistic Graphical Models                             |
+| **Model**   | Structural Causal Model built from live Neo4j service topology       |
+| **Logic**   | Computes _P(Service A = Root Cause \| Services B, C show anomalies)_ |
+| **Priors**  | Uniform on fresh install → updated from resolved incident history    |
+| **Goal**    | Eliminate false positives from downstream symptoms                   |
 
 > **How priors improve over time:** On fresh install, the Bayesian engine uses uniform priors (equal probability across all nodes). After 10+ resolved incidents, priors are updated from ClickHouse incident history — the system becomes measurably more accurate week-over-week.
 
 ### Pillar 3: Agentic Verification (ReAct Pattern)
 
-| Property | Detail |
-|---|---|
-| **Framework** | LangChain (ReAct Agent Pattern) |
-| **LLM** | Llama 3.1 via Ollama (self-hosted, data never leaves your infrastructure) |
-| **Tools** | ClickHouse query, Neo4j graph traversal, Qdrant semantic search |
+| Property      | Detail                                                                                 |
+| ------------- | -------------------------------------------------------------------------------------- |
+| **Framework** | LangChain (ReAct Agent Pattern)                                                        |
+| **LLM**       | Llama 3.1 via Ollama (self-hosted, data never leaves your infrastructure)              |
+| **Tools**     | ClickHouse query, Neo4j graph traversal, Qdrant semantic search                        |
 | **Embedding** | `nomic-embed-text` (dedicated embedding model — no compute competition with inference) |
-| **Goal** | Deep-dive verification + human-readable incident narration grounded in live evidence |
+| **Goal**      | Deep-dive verification + human-readable incident narration grounded in live evidence   |
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Layer | Technology | Why This Choice |
-|---|---|---|
-| **Streaming** | Redpanda (Kafka-compatible) | Sub-millisecond latency, no ZooKeeper, Kafka-compatible API |
-| **Metrics/Logs Storage** | ClickHouse (OLAP) | Sub-second queries over billions of rows; columnar compression |
-| **Graph Database** | Neo4j | Native graph traversal for service topology and causal path queries |
-| **Causal Inference** | pgmpy (Bayesian Networks) | Probabilistic certainty scores; handles non-linear failure topologies |
-| **Anomaly Detection** | scikit-learn Isolation Forest | Unsupervised, handles multivariate signals, online retraining support |
-| **LLM Reasoning** | LangChain + Llama3.1 (Ollama) | ReAct agent with tool-calling; fully local inference; no vendor lock-in |
-| **Vector Memory** | Qdrant | Metadata-rich historical incident search; Rust-native performance |
-| **Embeddings** | nomic-embed-text | Dedicated embedding model; does not compete with LLM inference GPU |
-| **Telemetry** | OpenTelemetry Collector | CNCF standard; auto-instruments traces, metrics, and logs |
-| **Caching** | Redis | Hot alert state, API response caching, deduplication |
-| **Tracing** | Jaeger | Distributed trace storage and visualization |
-| **Metrics Scraping** | Prometheus + Grafana | Self-monitoring CausalIQ's own health |
-| **Backend API** | FastAPI + Uvicorn | Async REST + WebSocket; auto-generates OpenAPI docs |
-| **Frontend** | React + TailwindCSS + Zustand | Real-time WebSocket dashboard; Cytoscape.js causal graph |
-| **Load Testing** | Locust | Realistic ramp-up patterns with fault orchestration |
+| Layer                    | Technology                    | Why This Choice                                                         |
+| ------------------------ | ----------------------------- | ----------------------------------------------------------------------- |
+| **Streaming**            | Redpanda (Kafka-compatible)   | Sub-millisecond latency, no ZooKeeper, Kafka-compatible API             |
+| **Metrics/Logs Storage** | ClickHouse (OLAP)             | Sub-second queries over billions of rows; columnar compression          |
+| **Graph Database**       | Neo4j                         | Native graph traversal for service topology and causal path queries     |
+| **Causal Inference**     | pgmpy (Bayesian Networks)     | Probabilistic certainty scores; handles non-linear failure topologies   |
+| **Anomaly Detection**    | scikit-learn Isolation Forest | Unsupervised, handles multivariate signals, online retraining support   |
+| **LLM Reasoning**        | LangChain + Llama3.1 (Ollama) | ReAct agent with tool-calling; fully local inference; no vendor lock-in |
+| **Vector Memory**        | Qdrant                        | Metadata-rich historical incident search; Rust-native performance       |
+| **Embeddings**           | nomic-embed-text              | Dedicated embedding model; does not compete with LLM inference GPU      |
+| **Telemetry**            | OpenTelemetry Collector       | CNCF standard; auto-instruments traces, metrics, and logs               |
+| **Caching**              | Redis                         | Hot alert state, API response caching, deduplication                    |
+| **Tracing**              | Jaeger                        | Distributed trace storage and visualization                             |
+| **Metrics Scraping**     | Prometheus + Grafana          | Self-monitoring CausalIQ's own health                                   |
+| **Backend API**          | FastAPI + Uvicorn             | Async REST + WebSocket; auto-generates OpenAPI docs                     |
+| **Frontend**             | React + TailwindCSS + Zustand | Real-time WebSocket dashboard; Cytoscape.js causal graph                |
+| **Load Testing**         | Locust                        | Realistic ramp-up patterns with fault orchestration                     |
+
+---
+
+## 📚 Operational Docs
+
+- Problem Statement Alignment: [docs/PROBLEM_STATEMENT_ALIGNMENT.md](docs/PROBLEM_STATEMENT_ALIGNMENT.md)
+- Operational Architecture Flow: [docs/ARCHITECTURE_CAUSAL_FLOW.md](docs/ARCHITECTURE_CAUSAL_FLOW.md)
+- Incident Runbooks: [docs/RUNBOOKS.md](docs/RUNBOOKS.md)
+
+These documents define how to validate RCA quality, run repeatable incident response, and demonstrate alignment with the root-cause-analysis problem statement.
 
 ---
 
 ## 📦 Services
 
-| Service | Port | Description |
-|---|---|---|
-| `auth-service` | 8000 | JWT authentication microservice (OTel instrumented) |
-| `order-service` | 8001 | Order management microservice |
-| `payment-service` | 8002 | Payment processor with built-in fault injection endpoint |
-| `otel-collector` | 4317 / 4318 | OpenTelemetry Collector (traces → Jaeger, metrics → Prometheus, logs → Kafka) |
-| `redpanda` | 19092 | Kafka-compatible streaming broker |
-| `redpanda-console` | 8080 | Redpanda Web UI |
-| `neo4j` | 7474 / 7687 | Causal graph database (Browser + Bolt) |
-| `clickhouse` | 8123 | Columnar log/metrics OLAP store |
-| `qdrant` | 6333 | Vector DB for RAG incident memory |
-| `redis` | 6379 | API response cache and alert deduplication |
-| `prometheus` | 9090 | Metrics collection and scraping |
-| `grafana` | 3001 | Metrics visualization (admin / causaliq123) |
-| `jaeger` | 16686 | Distributed trace viewer |
-| `ollama` | 11434 | Local LLM server (Llama3.1 + nomic-embed-text) |
-| `backend` | 9001 | FastAPI REST API + WebSocket bridge |
-| `frontend` | 3000 | React dashboard |
-| `stream-processor` | — | Kafka consumer and sliding-window feature extractor |
-| `anomaly-detector` | — | Isolation Forest ML anomaly scoring (retrains every 5 min) |
-| `rca-engine` | — | Full RCA orchestration: Bayesian → Agent → Remediation |
+| Service            | Port        | Description                                                                   |
+| ------------------ | ----------- | ----------------------------------------------------------------------------- |
+| `auth-service`     | 8000        | JWT authentication microservice (OTel instrumented)                           |
+| `order-service`    | 8001        | Order management microservice                                                 |
+| `payment-service`  | 8002        | Payment processor with built-in fault injection endpoint                      |
+| `otel-collector`   | 4317 / 4318 | OpenTelemetry Collector (traces → Jaeger, metrics → Prometheus, logs → Kafka) |
+| `redpanda`         | 19092       | Kafka-compatible streaming broker                                             |
+| `redpanda-console` | 8080        | Redpanda Web UI                                                               |
+| `neo4j`            | 7474 / 7687 | Causal graph database (Browser + Bolt)                                        |
+| `clickhouse`       | 8123        | Columnar log/metrics OLAP store                                               |
+| `qdrant`           | 6333        | Vector DB for RAG incident memory                                             |
+| `redis`            | 6379        | API response cache and alert deduplication                                    |
+| `prometheus`       | 9090        | Metrics collection and scraping                                               |
+| `grafana`          | 3001        | Metrics visualization (admin / causaliq123)                                   |
+| `jaeger`           | 16686       | Distributed trace viewer                                                      |
+| `ollama`           | 11434       | Local LLM server (Llama3.1 + nomic-embed-text)                                |
+| `backend`          | 9001        | FastAPI REST API + WebSocket bridge                                           |
+| `frontend`         | 3000        | React dashboard                                                               |
+| `stream-processor` | —           | Kafka consumer and sliding-window feature extractor                           |
+| `anomaly-detector` | —           | Isolation Forest ML anomaly scoring (retrains every 5 min)                    |
+| `rca-engine`       | —           | Full RCA orchestration: Bayesian → Agent → Remediation                        |
 
 ---
 
 ## ✅ Prerequisites
 
-| Requirement | Minimum | Recommended |
-|---|---|---|
-| Docker Desktop | v24+ | Latest |
-| RAM allocated to Docker | **16 GB** | 32 GB |
-| CPU cores | 4 | 8+ |
-| Disk space | 20 GB | 40 GB |
-| Internet (first boot) | Required | Required |
-| NVIDIA GPU | Optional | Recommended for faster LLM |
+| Requirement             | Minimum   | Recommended                |
+| ----------------------- | --------- | -------------------------- |
+| Docker Desktop          | v24+      | Latest                     |
+| RAM allocated to Docker | **16 GB** | 32 GB                      |
+| CPU cores               | 4         | 8+                         |
+| Disk space              | 20 GB     | 40 GB                      |
+| Internet (first boot)   | Required  | Required                   |
+| NVIDIA GPU              | Optional  | Recommended for faster LLM |
 
 > **Why 16 GB?** Llama3.1 requires ~8 GB RAM alone. ClickHouse, Neo4j, Redpanda, and Qdrant each need 1–2 GB. Running below 16 GB will cause OOM crashes.
 
@@ -217,7 +257,7 @@ If your machine has less than 16 GB available for Docker, swap to a smaller mode
 ```yaml
 # In docker-compose.yml → rca-engine service
 environment:
-  LLM_MODEL: llama3.2:1b   # ~1.5 GB instead of ~8 GB
+  LLM_MODEL: llama3.2:1b # ~1.5 GB instead of ~8 GB
 ```
 
 ---
@@ -265,15 +305,15 @@ All services should show `healthy` or `running`. If any service shows `unhealthy
 
 ### Step 4 — Open the Dashboard
 
-| Interface | URL | Credentials |
-|---|---|---|
-| **CausalIQ Dashboard** | http://localhost:3000 | — |
-| Backend API Docs | http://localhost:9001/api/docs | — |
-| Redpanda Console | http://localhost:8080 | — |
-| Jaeger Traces | http://localhost:16686 | — |
-| Prometheus | http://localhost:9090 | — |
-| Grafana | http://localhost:3001 | admin / causaliq123 |
-| Neo4j Browser | http://localhost:7474 | neo4j / causaliq123 |
+| Interface              | URL                            | Credentials         |
+| ---------------------- | ------------------------------ | ------------------- |
+| **CausalIQ Dashboard** | http://localhost:3000          | —                   |
+| Backend API Docs       | http://localhost:9001/api/docs | —                   |
+| Redpanda Console       | http://localhost:8080          | —                   |
+| Jaeger Traces          | http://localhost:16686         | —                   |
+| Prometheus             | http://localhost:9090          | —                   |
+| Grafana                | http://localhost:3001          | admin / causaliq123 |
+| Neo4j Browser          | http://localhost:7474          | neo4j / causaliq123 |
 
 ---
 
@@ -321,10 +361,13 @@ curl -X POST http://localhost:9001/trigger-load \
 ## 🔌 API Reference
 
 ### `GET /incidents`
+
 Returns all detected incidents with root cause, Bayesian confidence score, and impact chain.
 
 ### `GET /rca/{incident_id}`
+
 Full RCA detail for a specific incident:
+
 - Root cause service and timestamp
 - Confidence score (0.0 – 1.0)
 - Impact chain (ordered list of affected services)
@@ -334,15 +377,19 @@ Full RCA detail for a specific incident:
 - Similar historical incidents from Qdrant
 
 ### `GET /graph`
+
 Current service dependency graph as nodes and edges from Neo4j.
 
 ### `GET /metrics`
+
 Per-service telemetry snapshot: `avg_latency`, `p99_latency`, `error_rate`, `throughput`.
 
 ### `GET /anomalies`
+
 Recent anomaly events with Isolation Forest anomaly scores and detection timestamps.
 
 ### `POST /trigger-load`
+
 Programmatically trigger a load test with optional fault injection.
 
 ```json
@@ -355,6 +402,7 @@ Programmatically trigger a load test with optional fault injection.
 ```
 
 ### `WebSocket /ws/live`
+
 Real-time stream of RCA results and anomaly events pushed directly from Kafka topics. Connect once — receive all incident updates as they happen.
 
 ---
@@ -365,15 +413,15 @@ All services are configured via environment variables in `docker-compose.yml`.
 
 ### Key Variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `ANOMALY_SCORE_THRESHOLD` | `-0.3` | Isolation Forest threshold. More negative = more selective. Range: -1 to 0. |
-| `MIN_TRAINING_SAMPLES` | `100` | Minimum samples before first model inference. Lower = faster but less accurate. |
-| `WINDOW_SECONDS` | `60` | Sliding window size for correlation detection. |
-| `LLM_MODEL` | `llama3` | Ollama model name. Change to `mistral` or `llama3.2:1b` for lower RAM. |
-| `EMBED_MODEL` | `nomic-embed-text` | Embedding model for Qdrant incident vectorization. |
-| `BAYESIAN_MIN_CONFIDENCE` | `0.7` | Minimum confidence to trigger Agentic verification phase. |
-| `RAG_TOP_K` | `3` | Number of similar past incidents retrieved from Qdrant per query. |
+| Variable                  | Default            | Description                                                                     |
+| ------------------------- | ------------------ | ------------------------------------------------------------------------------- |
+| `ANOMALY_SCORE_THRESHOLD` | `-0.3`             | Isolation Forest threshold. More negative = more selective. Range: -1 to 0.     |
+| `MIN_TRAINING_SAMPLES`    | `100`              | Minimum samples before first model inference. Lower = faster but less accurate. |
+| `WINDOW_SECONDS`          | `60`               | Sliding window size for correlation detection.                                  |
+| `LLM_MODEL`               | `llama3`           | Ollama model name. Change to `mistral` or `llama3.2:1b` for lower RAM.          |
+| `EMBED_MODEL`             | `nomic-embed-text` | Embedding model for Qdrant incident vectorization.                              |
+| `BAYESIAN_MIN_CONFIDENCE` | `0.7`              | Minimum confidence to trigger Agentic verification phase.                       |
+| `RAG_TOP_K`               | `3`                | Number of similar past incidents retrieved from Qdrant per query.               |
 
 ### Switch to Mistral
 

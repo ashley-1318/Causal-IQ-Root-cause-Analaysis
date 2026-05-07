@@ -1,0 +1,189 @@
+{
+  "generated_at": "2026-05-05T04:56:57.657814+00:00",
+  "backend": "http://localhost:9001",
+  "phase1_like_summary": {
+    "accuracy_rate": 0.0,
+    "false_positive_rate": 0.0,
+    "missed_detection_rate": 1.0,
+    "mean_detection_latency_s": null,
+    "mean_ticket_latency_s": null,
+    "mean_confidence": null,
+    "fault_runs": 3,
+    "baseline_runs": 1
+  },
+  "phase5_gate_summary": {
+    "accuracy_rate": 0.0,
+    "missed_detection_rate": 1.0,
+    "false_positive_rate": 0.0,
+    "average_mttr_reduction_ratio": 0.0,
+    "gates": {
+      "accuracy_gate": false,
+      "missed_detection_gate": false,
+      "mttr_gate": false
+    },
+    "go_live_ready": false
+  },
+  "feedback_samples_added": 0,
+  "live_accuracy_metrics_before": {
+    "overall": {
+      "total": 1,
+      "correct": 0,
+      "accuracy": 0.0
+    },
+    "by_root_cause": [
+      {
+        "predicted_root_cause": "order-service",
+        "total": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    ]
+  },
+  "live_accuracy_metrics": {
+    "overall": {
+      "total": 1,
+      "correct": 0,
+      "accuracy": 0.0
+    },
+    "by_root_cause": [
+      {
+        "predicted_root_cause": "order-service",
+        "total": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    ]
+  },
+  "resilience_snapshot": {
+    "auth": {
+      "failure_count": 0,
+      "opened_at": null,
+      "reset_timeout_seconds": 20
+    },
+    "order": {
+      "failure_count": 0,
+      "opened_at": null,
+      "reset_timeout_seconds": 20
+    },
+    "payment": {
+      "failure_count": 0,
+      "opened_at": null,
+      "reset_timeout_seconds": 20
+    },
+    "jira": {
+      "failure_count": 0,
+      "opened_at": null,
+      "reset_timeout_seconds": 30
+    }
+  },
+  "drills": [
+    {
+      "drill": "baseline-sanity",
+      "trigger_response": {
+        "status": "load_test_started",
+        "duration_seconds": 30,
+        "concurrency": 25,
+        "fault_injected": false,
+        "fault_family": "payment",
+        "fault_db_latency_ms": 0,
+        "fault_error_rate": 0.0
+      },
+      "incident_count": 0,
+      "best_incident": null,
+      "expected_root_cause": null,
+      "is_accurate": false,
+      "detection_latency_s": null,
+      "ticket_latency_s": null,
+      "operator_validation_seconds": 45,
+      "manual_mttr_seconds": 1800,
+      "mttr_with_causaliq_seconds": null,
+      "mttr_reduction_ratio": null,
+      "feedback_result": null,
+      "missed_detection": false,
+      "false_positive": false,
+      "ticket_required": false,
+      "ticket_created": false
+    },
+    {
+      "drill": "payment-latency-drill-1",
+      "trigger_response": {
+        "status": "load_test_started",
+        "duration_seconds": 30,
+        "concurrency": 25,
+        "fault_injected": true,
+        "fault_family": "payment",
+        "fault_db_latency_ms": 1000,
+        "fault_error_rate": 0.25
+      },
+      "incident_count": 0,
+      "best_incident": null,
+      "expected_root_cause": "payment-service",
+      "is_accurate": false,
+      "detection_latency_s": null,
+      "ticket_latency_s": null,
+      "operator_validation_seconds": 45,
+      "manual_mttr_seconds": 1800,
+      "mttr_with_causaliq_seconds": null,
+      "mttr_reduction_ratio": null,
+      "feedback_result": null,
+      "missed_detection": true,
+      "false_positive": false,
+      "ticket_required": false,
+      "ticket_created": false
+    },
+    {
+      "drill": "auth-degradation-drill-1",
+      "trigger_response": {
+        "status": "load_test_started",
+        "duration_seconds": 30,
+        "concurrency": 25,
+        "fault_injected": true,
+        "fault_family": "auth",
+        "fault_db_latency_ms": 1000,
+        "fault_error_rate": 0.3
+      },
+      "incident_count": 0,
+      "best_incident": null,
+      "expected_root_cause": "auth-service",
+      "is_accurate": false,
+      "detection_latency_s": null,
+      "ticket_latency_s": null,
+      "operator_validation_seconds": 45,
+      "manual_mttr_seconds": 1800,
+      "mttr_with_causaliq_seconds": null,
+      "mttr_reduction_ratio": null,
+      "feedback_result": null,
+      "missed_detection": true,
+      "false_positive": false,
+      "ticket_required": false,
+      "ticket_created": false
+    },
+    {
+      "drill": "order-degradation-drill-1",
+      "trigger_response": {
+        "status": "load_test_started",
+        "duration_seconds": 30,
+        "concurrency": 25,
+        "fault_injected": true,
+        "fault_family": "order",
+        "fault_db_latency_ms": 1000,
+        "fault_error_rate": 0.3
+      },
+      "incident_count": 0,
+      "best_incident": null,
+      "expected_root_cause": "order-service",
+      "is_accurate": false,
+      "detection_latency_s": null,
+      "ticket_latency_s": null,
+      "operator_validation_seconds": 45,
+      "manual_mttr_seconds": 1800,
+      "mttr_with_causaliq_seconds": null,
+      "mttr_reduction_ratio": null,
+      "feedback_result": null,
+      "missed_detection": true,
+      "false_positive": false,
+      "ticket_required": false,
+      "ticket_created": false
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+# Prometheus Alert Rules for CausalIQ Production
+groups:
+  - name: causaliq
+    interval: 30s
+    rules:
+      # ── Incident Response SLA ──────────────────────────────────────────────
+      - alert: HighIncidentRate
+        expr: rate(incidents_created_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High incident creation rate ({{ $value | humanize }}/sec)"
+          runbook: "https://wiki.company.com/causaliq/high-incident-rate"
+
+      - alert: LowRCAAccuracy
+        expr: rca_accuracy_percentage < 75
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RCA accuracy below 75% (current: {{ $value }}%)"
+          runbook: "https://wiki.company.com/causaliq/low-accuracy"
+
+      # ── Jira Bridge Health ──────────────────────────────────────────────────
+      - alert: JiraBridgeDown
+        expr: up{job="jira-bridge"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Jira Bridge service is down"
+          runbook: "https://wiki.company.com/causaliq/jira-bridge-down"
+
+      - alert: JiraAPIErrorRate
+        expr: rate(jira_api_errors_total[5m]) / rate(jira_api_calls_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jira API error rate > 5% ({{ $value | humanizePercentage }})"
+          runbook: "https://wiki.company.com/causaliq/jira-errors"
+
+      - alert: JiraWebhookFailures
+        expr: rate(jira_webhook_failures_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jira webhook failures detected"
+          runbook: "https://wiki.company.com/causaliq/webhook-failures"
+
+      # ── Backend & API Health ────────────────────────────────────────────────
+      - alert: BackendHighLatency
+        expr: histogram_quantile(0.95, rate(backend_request_duration_seconds_bucket[5m])) > 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backend P95 latency > 1s ({{ $value | humanizeDuration }})"
+          runbook: "https://wiki.company.com/causaliq/backend-latency"
+
+      - alert: BackendErrorRate
+        expr: rate(backend_request_errors_total[5m]) > 0.01
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend error rate > 1% ({{ $value | humanizePercentage }})"
+          runbook: "https://wiki.company.com/causaliq/backend-errors"
+
+      # ── Database Health ────────────────────────────────────────────────────
+      - alert: ClickhouseDiskUsage
+        expr: (node_filesystem_avail_bytes{device="/dev/clickhouse"} / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClickHouse disk usage > 90%"
+          runbook: "https://wiki.company.com/causaliq/disk-full"
+
+      - alert: ClickhouseDown
+        expr: up{job="clickhouse"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClickHouse is unreachable"
+          runbook: "https://wiki.company.com/causaliq/clickhouse-down"
+
+      - alert: Neo4jDown
+        expr: up{job="neo4j"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Neo4j graph database is unreachable"
+          runbook: "https://wiki.company.com/causaliq/neo4j-down"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis cache is unreachable"
+          runbook: "https://wiki.company.com/causaliq/redis-down"
+
+      # ── Kafka/Streaming Health ─────────────────────────────────────────────
+      - alert: KafkaLag
+        expr: kafka_consumer_lag_sum{topic=~"rca-.*"} > 10000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag > 10k messages ({{ $value }})"
+          runbook: "https://wiki.company.com/causaliq/kafka-lag"
+
+      - alert: RedpandaDown
+        expr: up{job="redpanda"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redpanda streaming broker is unreachable"
+          runbook: "https://wiki.company.com/causaliq/redpanda-down"
+
+      # ── Container Health ──────────────────────────────────────────────────
+      - alert: ContainerOOM
+        expr: increase(container_oom_kills_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container OOM killed ({{ $labels.container }})"
+          runbook: "https://wiki.company.com/causaliq/container-oom"
+
+      # ── SLA Compliance ──────────────────────────────────────────────────────
+      - alert: MTTRSLAViolation
+        expr: (histogram_quantile(0.95, rate(incident_resolution_time_seconds_bucket[1h])) / 60) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MTTR SLA violation: P95 > 5 min ({{ $value | humanizeDuration }})"
+          runbook: "https://wiki.company.com/causaliq/mttr-sla"
+
+      - alert: TicketCreationSLAViolation
+        expr: (histogram_quantile(0.99, rate(jira_ticket_creation_time_seconds_bucket[1h]))) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ticket creation SLA violation: P99 > 30s ({{ $value | humanizeDuration }})"
+          runbook: "https://wiki.company.com/causaliq/ticket-creation-sla"

@@ -61,7 +61,7 @@ FastAPIInstrumentor.instrument_app(app)
 PAYMENTS: dict[str, dict] = {}
 
 # Fault injection flag — toggled by load generator
-FAULT_MODE = {"active": False, "db_latency_ms": 50}
+FAULT_MODE = {"active": False, "db_latency_ms": 50, "error_rate": 0.15}
 
 
 class PaymentRequest(BaseModel):
@@ -72,6 +72,7 @@ class PaymentRequest(BaseModel):
 class FaultConfig(BaseModel):
     active: bool
     db_latency_ms: int = 50
+    error_rate: float = 0.15
 
 
 @app.get("/health")
@@ -84,7 +85,13 @@ async def set_fault_mode(cfg: FaultConfig):
     """Real fault injection endpoint used by the load generator."""
     FAULT_MODE["active"] = cfg.active
     FAULT_MODE["db_latency_ms"] = cfg.db_latency_ms
-    logger.warning("Fault mode changed: active=%s db_latency_ms=%d", cfg.active, cfg.db_latency_ms)
+    FAULT_MODE["error_rate"] = max(0.0, min(1.0, cfg.error_rate))
+    logger.warning(
+        "Fault mode changed: active=%s db_latency_ms=%d error_rate=%.2f",
+        cfg.active,
+        cfg.db_latency_ms,
+        FAULT_MODE["error_rate"],
+    )
     return FAULT_MODE
 
 
@@ -109,7 +116,7 @@ async def process_payment(req: PaymentRequest):
             db_span.set_attribute("db.latency_ms", db_wait)
 
             # Simulate DB errors in fault mode
-            if FAULT_MODE["active"] and random.random() < 0.15:
+            if FAULT_MODE["active"] and random.random() < FAULT_MODE["error_rate"]:
                 err = Exception("DB connection pool exhausted")
                 db_span.record_exception(err)
                 error_counter.add(1, {"reason": "db_error"})
@@ -123,7 +130,7 @@ async def process_payment(req: PaymentRequest):
             gw_span.set_attribute("gateway.latency_ms", gw_latency)
 
             # Random decline (2% baseline, 10% in fault mode)
-            decline_rate = 0.10 if FAULT_MODE["active"] else 0.02
+            decline_rate = max(0.10, FAULT_MODE["error_rate"]) if FAULT_MODE["active"] else 0.02
             if random.random() < decline_rate:
                 error_counter.add(1, {"reason": "gateway_declined"})
                 gw_span.set_attribute("gateway.result", "declined")

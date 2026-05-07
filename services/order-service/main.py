@@ -69,9 +69,32 @@ class OrderRequest(BaseModel):
     quantity:   int
     amount:     float
 
+
+class FaultConfig(BaseModel):
+    active: bool
+    db_latency_ms: int = 50
+    error_rate: float = 0.20
+
+
+FAULT_MODE = {"active": False, "db_latency_ms": 50, "error_rate": 0.20}
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "order-service", "ts": datetime.utcnow().isoformat()}
+    return {"status": "ok", "service": "order-service", "ts": datetime.utcnow().isoformat(), "fault_mode": FAULT_MODE}
+
+
+@app.post("/admin/fault")
+async def set_fault_mode(cfg: FaultConfig):
+    FAULT_MODE["active"] = cfg.active
+    FAULT_MODE["db_latency_ms"] = cfg.db_latency_ms
+    FAULT_MODE["error_rate"] = max(0.0, min(1.0, cfg.error_rate))
+    logger.warning(
+        "Order fault mode changed: active=%s latency_ms=%d error_rate=%.2f",
+        cfg.active,
+        cfg.db_latency_ms,
+        FAULT_MODE["error_rate"],
+    )
+    return FAULT_MODE
 
 @app.get("/orders")
 async def list_orders():
@@ -96,6 +119,12 @@ async def create_order(req: OrderRequest, authorization: str = Header(default=""
         span.set_attribute("order.amount", req.amount)
         order_counter.add(1, {"product": req.product_id})
         order_value_hist.record(req.amount)
+
+        if FAULT_MODE["active"]:
+            await asyncio.sleep(max(FAULT_MODE["db_latency_ms"], 5) / 1000)
+            if random.random() < FAULT_MODE["error_rate"]:
+                error_counter.add(1, {"reason": "fault_injected_order"})
+                raise HTTPException(status_code=503, detail="Order service degraded")
 
         # Validate token with auth service
         with tracer.start_as_current_span("order.validate_auth") as auth_span:

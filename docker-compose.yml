@@ -20,9 +20,10 @@ x-common-env: &common-env
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
   AUTH_SERVICE_URL:    http://auth-service:8000
   ORDER_SERVICE_URL:   http://order-service:8001
-  SLACK_BOT_TOKEN:        "${SLACK_BOT_TOKEN:-xoxb-your-token-here}"
-  SLACK_SIGNING_SECRET:   "da319677eacacd551bd2282a8c95f4f0"
-  SLACK_CHANNEL_ID:       "C0AUBJ38VLL"
+  JIRA_BRIDGE_URL:     http://jira-bridge:8010
+  SLACK_BOT_TOKEN:        ${SLACK_BOT_TOKEN:-}
+  SLACK_SIGNING_SECRET:   ${SLACK_SIGNING_SECRET:-}
+  SLACK_CHANNEL_ID:       ${SLACK_CHANNEL_ID:-}
   APPROVAL_TIMEOUT_SECONDS: "300"
   ANOMALY_SCORE_THRESHOLD: "-0.30"
   PAYMENT_SERVICE_URL: http://payment-service:8002
@@ -192,7 +193,8 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: causaliq123
-      GF_INSTALL_PLUGINS: grafana-clock-panel
+      # Install clock panel and ClickHouse datasource plugin
+      GF_INSTALL_PLUGINS: grafana-clock-panel,vertamedia-clickhouse-datasource
     volumes:
       - grafana_data:/var/lib/grafana
       - ./otel/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
@@ -360,8 +362,12 @@ services:
     command: python orchestrator.py
     environment:
       <<: *common-env
-      LLM_MODEL: llama3
-      EMBED_MODEL: nomic-embed-text
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-llama3}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    env_file:
+      - .env
     depends_on:
       redpanda:
         condition: service_healthy
@@ -373,6 +379,27 @@ services:
         condition: service_started
       kafka-setup:
         condition: service_completed_successfully
+    networks:
+      - causaliq-net
+    restart: unless-stopped
+
+  jira-bridge:
+    build: ./services/jira-bridge
+    container_name: causaliq-jira-bridge
+    environment:
+      JIRA_CLOUD_URL: ${JIRA_CLOUD_URL:-}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      CAUSALIQ_API_URL: http://backend:9000
+      JIRA_PROJECT_KEY: ${JIRA_PROJECT_KEY:-PRODA8}
+      JIRA_ISSUE_TYPE: ${JIRA_ISSUE_TYPE:-Idea}
+      JIRA_AUTO_TICKET_THRESHOLD: "0.8"
+      JIRA_WEBHOOK_SECRET: ${JIRA_WEBHOOK_SECRET:-}
+    ports:
+      - "8010:8010"
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - causaliq-net
     restart: unless-stopped

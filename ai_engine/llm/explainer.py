@@ -67,6 +67,9 @@ def generate_llm(prompt: str, system: str = "") -> str:
 class RCAExplainer:
     def __init__(self):
         self.store = QdrantIncidentStore()
+        self.qdrant = self.store.client  # Alias for compatibility
+        self._explanation_cache = {}
+        self._embed_cache = {}
 
     async def _build_rag_context(self, rca_data: dict) -> str:
         """Retrieve similar past incidents using Hybrid Search."""
@@ -86,11 +89,22 @@ class RCAExplainer:
             )
         return "\n\n".join(context_parts)
 
+    def _get_cache_key(self, rca_data: dict) -> str:
+        root = rca_data.get("root_cause_service", "unknown")
+        chain = ",".join(rca_data.get("impact_chain", []))
+        anomalies = ",".join(sorted([a.get('service', '') for a in rca_data.get("anomalies_summary", [])]))
+        return hashlib.md5(f"{root}:{chain}:{anomalies}".encode()).hexdigest()
+
     async def generate_rca(self, rca_data: dict) -> dict:
         """
         Generate a full RCA explanation using LLM + RAG.
         rca_data: output from the causal engine
         """
+        cache_key = self._get_cache_key(rca_data)
+        if cache_key in self._explanation_cache:
+            logger.info("Cache hit for RCA explanation")
+            return self._explanation_cache[cache_key]
+
         root = rca_data.get("root_cause_service", "unknown")
         chain = rca_data.get("impact_chain", [])
         anomalies_summary = rca_data.get("anomalies_summary", [])
@@ -98,7 +112,7 @@ class RCAExplainer:
 
         # RAG: retrieve similar past incidents
         query = f"root cause {root} latency error cascade {' '.join(chain)}"
-        rag_context = await self._build_rag_context(query)
+        rag_context = await self._build_rag_context({"root_cause_service": root})
 
         # Build LLM prompt
         system_prompt = (
@@ -147,7 +161,18 @@ Provide a concise but complete incident RCA report.
 
         # Store this incident in Qdrant for future RAG
         incident_id = str(uuid.uuid4())[:8]
-        vec = embed_text(f"{root} {' '.join(chain)} {explanation[:500]}")
+        
+        # Cache embedding too
+        embed_text_val = f"{root} {' '.join(chain)} {explanation[:500]}"
+        embed_key = hashlib.md5(embed_text_val.encode()).hexdigest()
+        
+        if embed_key in self._embed_cache:
+            vec = self._embed_cache[embed_key]
+        else:
+            vec = embed_text(embed_text_val)
+            if vec:
+                self._embed_cache[embed_key] = vec
+
         if vec:
             self.qdrant.upsert(
                 point_id=str(uuid.uuid4()).replace("-", "")[:32],
@@ -162,7 +187,7 @@ Provide a concise but complete incident RCA report.
                 },
             )
 
-        return {
+        result = {
             "incident_id": incident_id,
             "explanation": explanation,
             "rag_context_used": bool(rag_context),
@@ -170,3 +195,7 @@ Provide a concise but complete incident RCA report.
             "model": LLM_MODEL,
             "generated_at": datetime.utcnow().isoformat(),
         }
+        
+        self._explanation_cache[cache_key] = result
+        return result
+

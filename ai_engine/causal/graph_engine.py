@@ -195,7 +195,10 @@ def apply_dowhy_causal_inference(ranked: list[dict], anomalies: list[dict]) -> d
     Estimates: P(root_cause | observed_anomalies)
     """
     try:
-        from pgmpy.models import BayesianNetwork
+        try:
+            from pgmpy.models import DiscreteBayesianNetwork as BayesianNetwork
+        except ImportError:
+            from pgmpy.models import BayesianNetwork
         from pgmpy.factors.discrete import TabularCPD
         from pgmpy.inference import VariableElimination
 

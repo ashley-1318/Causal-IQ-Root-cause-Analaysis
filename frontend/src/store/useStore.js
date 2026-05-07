@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:9000';
-const WS_URL   = process.env.REACT_APP_WS_URL  || 'ws://localhost:9000/ws/live';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:9001';
+const WS_URL   = process.env.REACT_APP_WS_URL  || 'ws://localhost:9001/ws/live';
 
 export const useStore = create((set, get) => ({
   // State
   incidents:    [],
   anomalies:    [],
   metrics:      [],
+  accuracyMetrics: { overall: { total: 0, correct: 0, accuracy: 0 }, by_root_cause: [] },
   graph:        { nodes: [], edges: [] },
   liveEvents:   [],
   toasts:       [],
@@ -96,6 +97,13 @@ export const useStore = create((set, get) => ({
       ]);
       if (metR.ok)  set({ metrics:   await metR.json() });
       if (anomR.ok) set({ anomalies: await anomR.json() });
+    } catch {}
+  },
+
+  fetchAccuracyMetrics: async () => {
+    try {
+      const r = await fetch(`${API_BASE}/accuracy-metrics`);
+      if (r.ok) set({ accuracyMetrics: await r.json() });
     } catch {}
   },
 

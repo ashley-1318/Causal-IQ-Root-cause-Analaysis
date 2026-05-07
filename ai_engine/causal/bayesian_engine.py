@@ -1,7 +1,10 @@
 import logging
 import pandas as pd
 import numpy as np
-from pgmpy.models import BayesianNetwork
+try:
+    from pgmpy.models import DiscreteBayesianNetwork as BayesianNetwork
+except ImportError:
+    from pgmpy.models import BayesianNetwork
 from pgmpy.inference import VariableElimination
 from pgmpy.estimators import MaximumLikelihoodEstimator
 from typing import List, Tuple, Dict, Optional
@@ -17,7 +20,7 @@ class BayesianCausalEngine:
     """
     
     def __init__(self):
-        self.model: Optional[BayesianNetwork] = None
+        self.model = None
         self.inference: Optional[VariableElimination] = None
         self.is_trained: bool = False
 
@@ -26,16 +29,16 @@ class BayesianCausalEngine:
         Builds the DAG (Directed Acyclic Graph) for the Bayesian Network.
         Edges should be a list of tuples: (SourceService, DependentService)
         """
-        try:
-            if not edges:
-                logger.warning("No edges provided to build causal network.")
-                return
+        if not edges:
+            logger.warning("No edges provided to build causal network.")
+            return
 
+        try:
             self.model = BayesianNetwork(edges)
             logger.info(f"Bayesian Network built with {len(self.model.nodes())} nodes.")
         except Exception as e:
             logger.error(f"Failed to build Bayesian Network: {str(e)}")
-            raise
+            self.model = None
 
     def train_from_history(self, history_df: pd.DataFrame):
         """
@@ -57,10 +60,20 @@ class BayesianCausalEngine:
                     logger.warning(f"Node {node} missing from training data. Filling with zeros.")
                     history_df[node] = 0
             
-            self.model.fit(history_df, estimator=MaximumLikelihoodEstimator)
-            self.inference = VariableElimination(self.model)
-            self.is_trained = True
-            logger.info("Bayesian Engine training complete.")
+            # Manual estimation to support different pgmpy versions
+            mle = MaximumLikelihoodEstimator(self.model, history_df)
+            cpds = mle.get_parameters()
+            
+            for cpd in cpds:
+                self.model.add_cpds(cpd)
+            
+            if self.model.check_model():
+                self.inference = VariableElimination(self.model)
+                self.is_trained = True
+                logger.info("Bayesian Engine training complete.")
+            else:
+                logger.error("Bayesian model check failed after training.")
+                self.is_trained = False
             
         except Exception as e:
             logger.error(f"Training failed: {str(e)}")
@@ -76,7 +89,8 @@ class BayesianCausalEngine:
         """
         if not self.is_trained or self.inference is None:
             logger.warning("Engine not trained. Falling back to simple anomaly score.")
-            return [{"service": s, "probability": 0.5} for s in active_anomalies.keys()]
+            # Return anomalies in order with slightly differentiated probabilities based on key order
+            return [{"service": s, "probability": max(0.5 - (i * 0.05), 0.3)} for i, s in enumerate(active_anomalies.keys())]
 
         try:
             results = []
@@ -87,12 +101,20 @@ class BayesianCausalEngine:
 
             for node in target_nodes:
                 # Query: What is the probability this node is '1' (Active) given evidence?
-                query_res = self.inference.query(variables=[node], evidence=active_anomalies)
-                # query_res.values[1] is the prob of state '1'
-                results.append({
-                    "service": node,
-                    "probability": round(query_res.values[1], 4)
-                })
+                # Optimization: Remove the target node from evidence if it exists there
+                query_evidence = {k: v for k, v in active_anomalies.items() if k != node}
+                
+                try:
+                    query_res = self.inference.query(variables=[node], evidence=query_evidence)
+                    # query_res.values[1] is the prob of state '1'
+                    results.append({
+                        "service": node,
+                        "probability": round(query_res.values[1], 4)
+                    })
+                except Exception as node_err:
+                    logger.warning(f"Inference failed for node {node}: {node_err}")
+                    # Fallback for individual node failure
+                    results.append({"service": node, "probability": active_anomalies.get(node, 0.5)})
 
             return sorted(results, key=lambda x: x["probability"], reverse=True)
             

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useStore } from '../store/useStore';
+import React, { useEffect, useState } from 'react';
+import { API_BASE, useStore } from '../store/useStore';
 import { formatDistanceToNow, format } from 'date-fns';
 
 function confColor(c) {
@@ -25,9 +25,47 @@ function ImpactChain({ chain }) {
 }
 
 function IncidentDetail({ incident, onClose }) {
+  const fetchAccuracyMetrics = useStore(s => s.fetchAccuracyMetrics);
+  const accuracyMetrics = useStore(s => s.accuracyMetrics);
   const evidence = incident.evidence || {};
   const ranked   = evidence.ranked_candidates || [];
   const causal   = evidence.causal_inference  || {};
+  const [isAccurate, setIsAccurate] = useState('yes');
+  const [actualRootCause, setActualRootCause] = useState(incident.root_cause || '');
+  const [operatorFeedback, setOperatorFeedback] = useState('');
+  const [verifiedBy, setVerifiedBy] = useState('');
+  const [feedbackState, setFeedbackState] = useState({ submitting: false, error: '', done: false });
+
+  useEffect(() => {
+    fetchAccuracyMetrics();
+  }, [fetchAccuracyMetrics]);
+
+  const submitFeedback = async (e) => {
+    e.preventDefault();
+    setFeedbackState({ submitting: true, error: '', done: false });
+    try {
+      const res = await fetch(`${API_BASE}/incidents/${incident.incident_id}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_accurate: isAccurate === 'yes',
+          actual_root_cause: isAccurate === 'yes' ? incident.root_cause : actualRootCause,
+          operator_feedback: operatorFeedback,
+          verified_by: verifiedBy || 'anonymous',
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || 'Failed to submit feedback');
+      }
+
+      await fetchAccuracyMetrics();
+      setFeedbackState({ submitting: false, error: '', done: true });
+    } catch (err) {
+      setFeedbackState({ submitting: false, error: err.message || 'Failed to submit feedback', done: false });
+    }
+  };
 
   return (
     <div style={{
@@ -80,6 +118,21 @@ function IncidentDetail({ incident, onClose }) {
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Impact Chain</div>
           <ImpactChain chain={incident.impact_chain} />
         </div>
+
+        {(incident.ticket_id || incident.ticket_url) && (
+          <div className="card" style={{ marginBottom: '16px' }}>
+            <div className="card-title" style={{ marginBottom: '8px' }}>🎫 Jira Ticket</div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className="badge badge-blue">{incident.ticket_id || 'Pending'}</span>
+              <span className="badge badge-purple">{incident.ticket_status || 'OPEN'}</span>
+              {incident.ticket_url && (
+                <a href={incident.ticket_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)', fontSize: '12px' }}>
+                  Open ticket
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Ranked Candidates */}
         {ranked.length > 0 && (
@@ -144,6 +197,65 @@ function IncidentDetail({ incident, onClose }) {
             <div className="explanation-box">{incident.explanation}</div>
           </div>
         )}
+
+        <div className="card" style={{ marginTop: '16px' }}>
+          <div className="card-title" style={{ marginBottom: '8px' }}>📊 RCA Accuracy Snapshot</div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="badge badge-green">Overall accuracy: {(accuracyMetrics.overall?.accuracy * 100 || 0).toFixed(1)}%</span>
+            <span className="badge badge-blue">Verified: {accuracyMetrics.overall?.correct || 0}/{accuracyMetrics.overall?.total || 0}</span>
+          </div>
+        </div>
+
+        <form className="card" style={{ marginTop: '16px' }} onSubmit={submitFeedback}>
+          <div className="card-title" style={{ marginBottom: '12px' }}>📝 Operator Feedback</div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input type="radio" name="accuracy" value="yes" checked={isAccurate === 'yes'} onChange={() => setIsAccurate('yes')} />
+              RCA was accurate
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input type="radio" name="accuracy" value="partial" checked={isAccurate === 'partial'} onChange={() => setIsAccurate('partial')} />
+              Partially accurate
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input type="radio" name="accuracy" value="no" checked={isAccurate === 'no'} onChange={() => setIsAccurate('no')} />
+              RCA was incorrect
+            </label>
+          </div>
+
+          {isAccurate !== 'yes' && (
+            <input
+              type="text"
+              placeholder="Actual root cause"
+              value={actualRootCause}
+              onChange={e => setActualRootCause(e.target.value)}
+              style={{ width: '100%', marginBottom: '12px', padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+            />
+          )}
+
+          <input
+            type="text"
+            placeholder="Verified by"
+            value={verifiedBy}
+            onChange={e => setVerifiedBy(e.target.value)}
+            style={{ width: '100%', marginBottom: '12px', padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+          />
+
+          <textarea
+            placeholder="Operator notes"
+            value={operatorFeedback}
+            onChange={e => setOperatorFeedback(e.target.value)}
+            rows={3}
+            style={{ width: '100%', marginBottom: '12px', padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)' }}
+          />
+
+          {feedbackState.error && <div style={{ color: 'var(--accent-red)', marginBottom: '10px', fontSize: 12 }}>{feedbackState.error}</div>}
+          {feedbackState.done && <div style={{ color: 'var(--accent-green)', marginBottom: '10px', fontSize: 12 }}>Feedback saved and accuracy metrics refreshed.</div>}
+
+          <button className="btn btn-primary" type="submit" disabled={feedbackState.submitting}>
+            {feedbackState.submitting ? 'Saving…' : 'Submit feedback'}
+          </button>
+        </form>
       </div>
     </div>
   );
